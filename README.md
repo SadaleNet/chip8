@@ -1,10 +1,12 @@
-# Sadale's CHIP-8 Interpreter
+# Sadale's CHIP-8 Interpreter (ilo pi toki Sije "CHIP-8" pi jan Sate)
 
-This repo contains my implementation of CHIP-8 Interpreter
+(sina sona e toki pona la o lukin e lipu ni: [mi pali e ilo ni: ona li pali kepeken nasin toki Sije "CHIP-8"](https://sadale.net/tok/75/)
+
+This repo contains my implementation of CHIP-8 Interpreter in C.
 
 ![Screenshot of the CHIP-8 Interpreter running Brix](./doc/Brix (by Andreas Gustafsson)(1990).ch8.jpg)
 
-Blogpost of this project available here: [Sadale's CHIP-8 Interpreter](https://sadale.net/en/75/)
+Blogpost of this project available here: [Weekend Project: CHIP-8 Interpreter/Emulator](https://sadale.net/en/75/)
 
 ### Why another one? Aren't there already exist many of them on the internet?
 
@@ -35,4 +37,4 @@ For simplicity of implementation, the beeper is emulated by lighting up the bar 
 
 ### Acknowledgement
 
-* The main.c of this repo was adapted based on the code from the following repo: [https://github.com/xyproto/sdl2-examples/tree/main](sdl2-examples)
+* The main.c of this repo was adapted based on the SDL2 example code from the following repo: [https://github.com/xyproto/sdl2-examples/tree/main](sdl2-examples)
