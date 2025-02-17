@@ -1,10 +1,10 @@
 # Sadale's CHIP-8 Interpreter (ilo pi toki Sije "CHIP-8" pi jan Sate)
 
-(sina sona e toki pona la o lukin e lipu ni: [mi pali e ilo ni: ona li pali kepeken nasin toki Sije "CHIP-8"](https://sadale.net/tok/75/)
+(sina sona e toki pona la o lukin e lipu ni: [mi pali e ilo ni: ona li pali kepeken nasin toki Sije "CHIP-8"](https://sadale.net/tok/75/))
 
 This repo contains my implementation of CHIP-8 Interpreter in C.
 
-![Screenshot of the CHIP-8 Interpreter running Brix](./doc/Brix (by Andreas Gustafsson)(1990).ch8.jpg)
+![Screenshot of the CHIP-8 Interpreter running Brix](./doc/Brix%20(by%20Andreas%20Gustafsson)(1990).ch8.jpg?raw=true)
 
 Blogpost of this project available here: [Weekend Project: CHIP-8 Interpreter/Emulator](https://sadale.net/en/75/)
 
