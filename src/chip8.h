@@ -35,6 +35,21 @@
 #define CHIP8_DISPLAY_WIDTH (64U)
 #define CHIP8_DISPLAY_HEIGHT (32U)
 
+#define CHIP8_QUIRK_SHIFT (1U<<0)
+#define CHIP8_QUIRK_MEMORY_INCREASE_BY_X (1U<<1)
+#define CHIP8_QUIRK_MEMORY_LEAVE_I_UNCHANGED (1U<<2)
+#define CHIP8_QUIRK_WRAP (1U<<3)
+#define CHIP8_QUIRK_JUMP (1U<<4)
+#define CHIP8_QUIRK_VBLANK (1U<<5)
+#define CHIP8_QUIRK_LOGIC (1U<<6)
+
+#define CHIP8_QUIRK_LORES_WIDE_SPRITE (1U<<7)
+#define CHIP8_QUIRK_LORES_TALL_SPRITE (1U<<8)
+#define CHIP8_QUIRK_LORES_SCROLL_DIV2 (1U<<9)
+#define CHIP8_QUIRK_HIRES_COLLISION (1U<<10)
+#define CHIP8_QUIRK_RESIZE_CLEAR_SCREEN (1U<<11)
+#define CHIP8_QUIRK_VF_ORDER (1U<<12) // No clue on what it does
+
 struct chip8_cpu {
 	uint8_t v[16];
 	uint16_t i;
@@ -58,8 +73,9 @@ struct chip8_machine {
 	struct chip8_cpu cpu;
 	struct chip8_periph periph;
 	uint8_t mem[CHIP8_MEMORY_SIZE];
+	uint32_t quirks;
 };
 
 void chip8_step(struct chip8_machine *machine);
 void chip8_timer_step(struct chip8_machine *machine);
-void chip8_init(struct chip8_machine *machine);
+void chip8_init(struct chip8_machine *machine, uint32_t quirks);

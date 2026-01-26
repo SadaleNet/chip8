@@ -193,7 +193,9 @@ void chip8_step(struct chip8_machine *machine) {
 				}
 				row += CHIP8_DISPLAY_WIDTH/8;
 			}
-			periph->requests |= CHIP8_REQUEST_WAIT_DISPLAY_REFRESH;
+			if(machine->quirks & CHIP8_QUIRK_VBLANK) {
+				periph->requests |= CHIP8_REQUEST_WAIT_DISPLAY_REFRESH;
+			}
 		}
 		break;
 		case 0xE000:
@@ -294,7 +296,7 @@ void chip8_timer_step(struct chip8_machine *machine) {
 	}
 }
 
-void chip8_init(struct chip8_machine *machine) {
+void chip8_init(struct chip8_machine *machine, uint32_t quirks) {
 	static const uint8_t font_data[] = {
 		0xF0, 0x90, 0x90, 0x90, 0xF0, // 0
 		0x20, 0x60, 0x20, 0x20, 0x70, // 1
@@ -320,4 +322,6 @@ void chip8_init(struct chip8_machine *machine) {
 	machine->cpu.pc[0] = CHIP8_PROGRAM_START_OFFSET;
 
 	memset(&machine->periph, 0, sizeof(machine->periph));
+
+	machine->quirks = quirks;
 }

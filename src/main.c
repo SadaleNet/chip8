@@ -23,7 +23,12 @@
 struct chip8_machine chip8;
 #define BORDER_WIDTH (20U)
 #define PIXEL_SCALE (8U)
-#define FRAME_DURATION_MS (1000/60)
+#define FRAME_DURATION_MS (1000/60) // 60Hz for display refresh
+#define CYCLE_PER_FRAME (20)
+
+#define CHIP8_QUIRK_PLATFORM_VIP (CHIP8_QUIRK_VBLANK|CHIP8_QUIRK_LOGIC)
+#define CHIP8_QUIRK_PLATFORM_SCHIP (CHIP8_QUIRK_SHIFT|CHIP8_QUIRK_MEMORY_LEAVE_I_UNCHANGED|CHIP8_QUIRK_JUMP|CHIP8_QUIRK_HIRES_COLLISION)
+#define CHIP8_QUIRK_PLATFORM_XOCHIP (CHIP8_QUIRK_WRAP|CHIP8_QUIRK_LORES_WIDE_SPRITE)
 
 int main(int argc, char **argv)
 {
@@ -33,7 +38,7 @@ int main(int argc, char **argv)
 	}
 
 	srand(time(NULL));
-	chip8_init(&chip8);
+	chip8_init(&chip8, CHIP8_QUIRK_PLATFORM_VIP);
 	FILE *fp = fopen(argv[1], "r");
 	if(fp == NULL) {
 		fprintf(stderr, "Failed to open the file: %s\n", argv[1]);
@@ -66,14 +71,22 @@ int main(int argc, char **argv)
 		return EXIT_FAILURE;
 	}
 
+	SDL_Surface* surface = SDL_CreateRGBSurface(0, CHIP8_DISPLAY_WIDTH, CHIP8_DISPLAY_HEIGHT, 1, 0, 0, 0, 0);
+	memset(surface->pixels, 0x00, CHIP8_DISPLAY_WIDTH*CHIP8_DISPLAY_HEIGHT/8);
+
 	SDL_SetRenderDrawColor(ren, 0, 0, 0, 255);
 	SDL_RenderClear(ren);
 	SDL_RenderPresent(ren);
+
+	uint8_t skip_next_render = 0;
 
 	uint32_t current_tick = SDL_GetTicks();
 	uint32_t next_frame_tick = current_tick+FRAME_DURATION_MS;
 	uint16_t key_held_previous = 0;
 	uint8_t sound_indicator_prev = 2;
+
+	uint32_t cycle_counter = 0;
+
 	while (1) {
 		current_tick = SDL_GetTicks();
 		SDL_Event event;
@@ -101,6 +114,12 @@ int main(int argc, char **argv)
 			chip8_step(&chip8);
 		}
 
+		if(++cycle_counter >= CYCLE_PER_FRAME) {
+			while(SDL_GetTicks() < next_frame_tick) {
+				SDL_Delay(1);
+			}
+		}
+
 		if(SDL_GetTicks() >= next_frame_tick) {
 			// Beep indicator
 			uint8_t sound_indicator = (chip8.periph.sound_timer <= 0x01);
@@ -121,7 +140,7 @@ int main(int argc, char **argv)
 			}
 
 			// Render display
-			if(chip8.periph.requests & CHIP8_REQUEST_WAIT_DISPLAY_REFRESH) {
+			if(!skip_next_render) {
 				for(size_t x=0; x<CHIP8_DISPLAY_WIDTH; x++) {
 					for(size_t y=0; y<CHIP8_DISPLAY_HEIGHT; y++) {
 						if(chip8.periph.display[y*CHIP8_DISPLAY_WIDTH/8+x/8] & (1<<(7-x%8))) {
@@ -137,17 +156,21 @@ int main(int argc, char **argv)
 						SDL_RenderFillRect(ren, &rect);
 					}
 				}
-				chip8.periph.requests &= ~CHIP8_REQUEST_WAIT_DISPLAY_REFRESH;
 				SDL_RenderPresent(ren);
 			}
+			chip8.periph.requests &= ~CHIP8_REQUEST_WAIT_DISPLAY_REFRESH;
 
 			// Handle timers
 			chip8_timer_step(&chip8);
 			next_frame_tick += FRAME_DURATION_MS;
-		}
 
-		if(SDL_GetTicks() < next_frame_tick) {
-			SDL_Delay(1);
+			if(SDL_GetTicks() < next_frame_tick) {
+				skip_next_render = 0;
+			} else {
+				// Our emulator is lagging. Skipping the next frame rendering
+				skip_next_render = 1;
+			}
+			cycle_counter = 0;
 		}
 	}
 
