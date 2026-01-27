@@ -103,12 +103,21 @@ void chip8_step(struct chip8_machine *machine) {
 			switch(instruction&0x000F) {
 				case 0x0000: // 8XY0
 					*vx = *vy;
+					if(machine->quirks & CHIP8_QUIRK_LOGIC) {
+						*vf = 0;
+					}
 				break;
 				case 0x0001: // 8XY1
 					*vx |= *vy;
+					if(machine->quirks & CHIP8_QUIRK_LOGIC) {
+						*vf = 0;
+					}
 				break;
 				case 0x0002: // 8XY2
 					*vx &= *vy;
+					if(machine->quirks & CHIP8_QUIRK_LOGIC) {
+						*vf = 0;
+					}
 				break;
 				case 0x0003: // 8XY3
 					*vx ^= *vy;
@@ -129,8 +138,9 @@ void chip8_step(struct chip8_machine *machine) {
 				break;
 				case 0x0006: // 8XY6
 				{
-					*vf = (*vy & 0x01);
-					*vx = *vy >> 1;
+					uint8_t *target = (machine->quirks & CHIP8_QUIRK_SHIFT) ? vx : vy;
+					*vf = (*target & 0x01);
+					*vx = *target >> 1;
 				}
 				break;
 				case 0x0007: // 8XY7
@@ -142,8 +152,9 @@ void chip8_step(struct chip8_machine *machine) {
 				break;
 				case 0x000E: // 8XYE
 				{
-					*vf = (*vy & 0x80) >> 7;
-					*vx = *vy << 1;
+					uint8_t *target = (machine->quirks & CHIP8_QUIRK_SHIFT) ? vx : vy;
+					*vf = (*target & 0x80) >> 7;
+					*vx = *target << 1;
 				}
 				break;
 				default:
@@ -162,7 +173,11 @@ void chip8_step(struct chip8_machine *machine) {
 		}
 		break;
 		case 0xB000:
-			cpu->pc[cpu->pc_index] = (instruction & 0x0FFF) + cpu->v[0];
+			if(machine->quirks & CHIP8_QUIRK_JUMP) {
+				cpu->pc[cpu->pc_index] = (instruction & 0x0FFF) + *vx;
+			} else {
+				cpu->pc[cpu->pc_index] = (instruction & 0x0FFF) + cpu->v[0];
+			}
 			prevents_stepping = 1;
 		break;
 		case 0xC000:
@@ -261,6 +276,11 @@ void chip8_step(struct chip8_machine *machine) {
 					for(size_t x=0; x<n+1; x++) {
 						mem[(*i)++] = cpu->v[x];
 					}
+					if(machine->quirks & CHIP8_QUIRK_MEMORY_LEAVE_I_UNCHANGED) {
+						i -= (n+1);
+					} else if (machine->quirks & CHIP8_QUIRK_MEMORY_INCREASE_BY_X) {
+						i--;
+					}
 				}
 				break;
 				case 0x0065: // FX65
@@ -269,6 +289,11 @@ void chip8_step(struct chip8_machine *machine) {
 					assert(*i + n < CHIP8_MEMORY_SIZE);
 					for(size_t x=0; x<n+1; x++) {
 						cpu->v[x] = mem[(*i)++];
+					}
+					if(machine->quirks & CHIP8_QUIRK_MEMORY_LEAVE_I_UNCHANGED) {
+						i -= (n+1);
+					} else if (machine->quirks & CHIP8_QUIRK_MEMORY_INCREASE_BY_X) {
+						i--;
 					}
 				}
 				break;
@@ -315,8 +340,8 @@ void chip8_init(struct chip8_machine *machine, uint32_t quirks) {
 		0xF0, 0x80, 0xF0, 0x80, 0xF0, // E
 		0xF0, 0x80, 0xF0, 0x80, 0x80, // F
 	};
-	memset(machine->mem, 0, sizeof(machine->mem));
 	memcpy(machine->mem, font_data, sizeof(font_data));
+	memset(&machine->mem[sizeof(font_data)], 0, sizeof(machine->mem));
 
 	memset(&machine->cpu, 0, sizeof(machine->cpu));
 	machine->cpu.pc[0] = CHIP8_PROGRAM_START_OFFSET;

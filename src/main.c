@@ -38,7 +38,7 @@ int main(int argc, char **argv)
 	}
 
 	srand(time(NULL));
-	chip8_init(&chip8, CHIP8_QUIRK_PLATFORM_VIP);
+	chip8_init(&chip8, CHIP8_QUIRK_PLATFORM_SCHIP);
 	FILE *fp = fopen(argv[1], "r");
 	if(fp == NULL) {
 		fprintf(stderr, "Failed to open the file: %s\n", argv[1]);
