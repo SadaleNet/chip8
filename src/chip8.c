@@ -138,9 +138,10 @@ void chip8_step(struct chip8_machine *machine) {
 				break;
 				case 0x0006: // 8XY6
 				{
-					uint8_t *target = (machine->quirks & CHIP8_QUIRK_SHIFT) ? vx : vy;
-					*vf = (*target & 0x01);
-					*vx = *target >> 1;
+					uint8_t *source = (machine->quirks & CHIP8_QUIRK_SHIFT) ? vx : vy;
+					uint8_t shifted_out = (*source & 0x01);
+					*vx = *source >> 1;
+					*vf = shifted_out;
 				}
 				break;
 				case 0x0007: // 8XY7
@@ -152,9 +153,10 @@ void chip8_step(struct chip8_machine *machine) {
 				break;
 				case 0x000E: // 8XYE
 				{
-					uint8_t *target = (machine->quirks & CHIP8_QUIRK_SHIFT) ? vx : vy;
-					*vf = (*target & 0x80) >> 7;
-					*vx = *target << 1;
+					uint8_t *source = (machine->quirks & CHIP8_QUIRK_SHIFT) ? vx : vy;
+					uint8_t shifted_out = !!(*source & 0x80);
+					*vx = *source << 1;
+					*vf = shifted_out;
 				}
 				break;
 				default:
