@@ -103,9 +103,6 @@ void chip8_step(struct chip8_machine *machine) {
 			switch(instruction&0x000F) {
 				case 0x0000: // 8XY0
 					*vx = *vy;
-					if(machine->quirks & CHIP8_QUIRK_LOGIC) {
-						*vf = 0;
-					}
 				break;
 				case 0x0001: // 8XY1
 					*vx |= *vy;
@@ -121,6 +118,9 @@ void chip8_step(struct chip8_machine *machine) {
 				break;
 				case 0x0003: // 8XY3
 					*vx ^= *vy;
+					if(machine->quirks & CHIP8_QUIRK_LOGIC) {
+						*vf = 0;
+					}
 				break;
 				case 0x0004: // 8XY4
 				{
@@ -279,9 +279,9 @@ void chip8_step(struct chip8_machine *machine) {
 						mem[(*i)++] = cpu->v[x];
 					}
 					if(machine->quirks & CHIP8_QUIRK_MEMORY_LEAVE_I_UNCHANGED) {
-						i -= (n+1);
+						*i -= (n+1);
 					} else if (machine->quirks & CHIP8_QUIRK_MEMORY_INCREASE_BY_X) {
-						i--;
+						(*i)--;
 					}
 				}
 				break;
@@ -293,9 +293,9 @@ void chip8_step(struct chip8_machine *machine) {
 						cpu->v[x] = mem[(*i)++];
 					}
 					if(machine->quirks & CHIP8_QUIRK_MEMORY_LEAVE_I_UNCHANGED) {
-						i -= (n+1);
+						*i -= (n+1);
 					} else if (machine->quirks & CHIP8_QUIRK_MEMORY_INCREASE_BY_X) {
-						i--;
+						(*i)--;
 					}
 				}
 				break;
