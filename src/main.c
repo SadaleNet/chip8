@@ -22,13 +22,13 @@
 
 struct chip8_machine chip8;
 #define BORDER_WIDTH (20U)
-#define PIXEL_SCALE (8U)
+#define PIXEL_SCALE (4U)
 #define FRAME_DURATION_MS (1000/60) // 60Hz for display refresh
 #define CYCLE_PER_FRAME (20)
 
 #define CHIP8_QUIRK_PLATFORM_VIP (CHIP8_QUIRK_VBLANK|CHIP8_QUIRK_LOGIC)
 #define CHIP8_QUIRK_PLATFORM_SCHIP (CHIP8_QUIRK_SHIFT|CHIP8_QUIRK_MEMORY_LEAVE_I_UNCHANGED|CHIP8_QUIRK_JUMP|CHIP8_QUIRK_HIRES_COLLISION)
-#define CHIP8_QUIRK_PLATFORM_XOCHIP (CHIP8_QUIRK_WRAP|CHIP8_QUIRK_LORES_WIDE_SPRITE)
+#define CHIP8_QUIRK_PLATFORM_XOCHIP (CHIP8_QUIRK_WRAP|CHIP8_QUIRK_LORES_WIDE_SPRITE|CHIP8_QUIRK_RESIZE_CLEAR_SCREEN)
 
 int main(int argc, char **argv)
 {
@@ -112,6 +112,10 @@ int main(int argc, char **argv)
 		chip8.periph.random_num = rand();
 		if(!(chip8.periph.requests & CHIP8_REQUEST_WAIT_DISPLAY_REFRESH)) {
 			chip8_step(&chip8);
+			if(chip8.periph.requests & CHIP8_REQUEST_EXIT_EMULATOR) {
+				printf("Exit request received. Emulation completed!\n");
+				break;
+			}
 		}
 
 		if(++cycle_counter >= CYCLE_PER_FRAME) {
@@ -143,7 +147,7 @@ int main(int argc, char **argv)
 			if(!skip_next_render) {
 				for(size_t x=0; x<CHIP8_DISPLAY_WIDTH; x++) {
 					for(size_t y=0; y<CHIP8_DISPLAY_HEIGHT; y++) {
-						if(chip8.periph.display[y*CHIP8_DISPLAY_WIDTH/8+x/8] & (1<<(7-x%8))) {
+						if(chip8.periph.display[(x*CHIP8_DISPLAY_HEIGHT+y)/8] & (1<<(y%8))) {
 							SDL_SetRenderDrawColor(ren, 255, 255, 255, 255);
 						} else {
 							SDL_SetRenderDrawColor(ren, 0, 0, 0, 255);

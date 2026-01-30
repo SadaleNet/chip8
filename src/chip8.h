@@ -30,22 +30,21 @@
 
 #define CHIP8_PROGRAM_START_OFFSET (0x200U)
 #define CHIP8_MEMORY_SIZE (4096U)
-#define CHIP8_PC_STACK_SIZE (12U)
+#define CHIP8_PC_STACK_SIZE (16U) // 12 for original CHIP, 16 for SuperCHIP. Let's support 16. There's no harm.
 
-#define CHIP8_DISPLAY_WIDTH (64U)
-#define CHIP8_DISPLAY_HEIGHT (32U)
+#define CHIP8_DISPLAY_WIDTH (128U)
+#define CHIP8_DISPLAY_HEIGHT (64U)
 
 #define CHIP8_QUIRK_SHIFT (1U<<0)
 #define CHIP8_QUIRK_MEMORY_LEAVE_I_UNCHANGED (1U<<1)
 #define CHIP8_QUIRK_MEMORY_INCREASE_BY_X (1U<<2)
-#define CHIP8_QUIRK_WRAP (1U<<3) // TODO: UNIMPLEMENTED!
+#define CHIP8_QUIRK_WRAP (1U<<3)
 #define CHIP8_QUIRK_JUMP (1U<<4)
 #define CHIP8_QUIRK_VBLANK (1U<<5)
 #define CHIP8_QUIRK_LOGIC (1U<<6)
 
-// TODO: UNIMPLEMENTED!
 #define CHIP8_QUIRK_LORES_WIDE_SPRITE (1U<<7)
-#define CHIP8_QUIRK_LORES_TALL_SPRITE (1U<<8)
+#define CHIP8_QUIRK_LORES_TALL_SPRITE (1U<<8) // Also draws 8x16 in hires
 #define CHIP8_QUIRK_LORES_SCROLL_DIV2 (1U<<9)
 #define CHIP8_QUIRK_HIRES_COLLISION (1U<<10)
 #define CHIP8_QUIRK_RESIZE_CLEAR_SCREEN (1U<<11)
@@ -59,15 +58,18 @@ struct chip8_cpu {
 };
 
 #define CHIP8_REQUEST_WAIT_DISPLAY_REFRESH (1U << 0)
+#define CHIP8_REQUEST_EXIT_EMULATOR (1U << 1)
 
 struct chip8_periph {
 	uint8_t delay_timer;
 	uint8_t sound_timer;
 	uint16_t key_held;
 	uint16_t key_just_released;
-	uint8_t display[CHIP8_DISPLAY_WIDTH*CHIP8_DISPLAY_HEIGHT/8];
+	uint8_t high_res;
+	uint8_t display[CHIP8_DISPLAY_HEIGHT*CHIP8_DISPLAY_WIDTH/8]; // column-major, first column is leftmost. Each column is 64bit, the top bit is LSB.
 	uint8_t random_num;
 	uint8_t requests;
+	uint8_t storage_flags[16];
 };
 
 struct chip8_machine {

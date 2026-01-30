@@ -27,7 +27,6 @@
 // POSSIBILITY OF SUCH DAMAGE.
 
 #include "chip8.h"
-#include <stdbool.h>
 #include <string.h>
 #include <assert.h>
 #include <stdio.h>
@@ -55,19 +54,70 @@ void chip8_step(struct chip8_machine *machine) {
 	uint8_t *vf = &cpu->v[15];
 	uint16_t *i = &cpu->i;
 
+	#define NEED_DOUBLE_SCROLL() (!periph->high_res && !(machine->quirks & CHIP8_QUIRK_LORES_SCROLL_DIV2))
+
 	switch(instruction & 0xF000) {
 		case 0x0000:
-			switch(instruction & 0x00FF) {
-				case 0x00E0: // 00E0
-					memset(periph->display, 0, sizeof(periph->display));
-				break;
-				case 0x00EE: // 00EE
-					assert(cpu->pc_index > 0);
-					cpu->pc_index--;
-				break;
-				default:
-					assert(false); // Machine code execution: Unsupported!
-				break;
+			if((instruction & 0x00F0) == 0x00C0) {
+				// 00CN Superchip
+				uint8_t shift = (instruction & 0x000F);
+				if(NEED_DOUBLE_SCROLL()) {
+					shift *= 2;
+				}
+				assert(CHIP8_DISPLAY_HEIGHT == 64);
+				for(size_t x=0; x<CHIP8_DISPLAY_WIDTH; x++) {
+					*((uint64_t*)&periph->display[x*CHIP8_DISPLAY_HEIGHT/8]) = *((uint64_t*)&periph->display[x*CHIP8_DISPLAY_HEIGHT/8]) << shift;
+				}
+			} else {
+				switch(instruction & 0x00FF) {
+					case 0x00E0: // 00E0
+						memset(periph->display, 0, sizeof(periph->display));
+					break;
+					case 0x00EE: // 00EE
+						assert(cpu->pc_index > 0);
+						cpu->pc_index--;
+					break;
+					case 0x00FB: // 00FB Superchip
+					{
+						uint8_t shift = NEED_DOUBLE_SCROLL() ? 8 : 4;
+						for(size_t x=CHIP8_DISPLAY_WIDTH-1; x>=shift; x--) {
+							for(size_t y=0; y<CHIP8_DISPLAY_HEIGHT/8; y++) {
+								periph->display[x*CHIP8_DISPLAY_HEIGHT/8+y] = periph->display[(x-shift)*CHIP8_DISPLAY_HEIGHT/8+y];
+							}
+						}
+						memset(periph->display, 0, shift*CHIP8_DISPLAY_HEIGHT/8);
+					}
+					break;
+					case 0x00FC: // 00FC Superchip
+					{
+						uint8_t shift = NEED_DOUBLE_SCROLL() ? 8 : 4;
+						for(size_t x=0; x<CHIP8_DISPLAY_WIDTH-shift; x++) {
+							for(size_t y=0; y<CHIP8_DISPLAY_HEIGHT/8; y++) {
+								periph->display[x*CHIP8_DISPLAY_HEIGHT/8+y] = periph->display[(x+shift)*CHIP8_DISPLAY_HEIGHT/8+y];
+							}
+						}
+						memset(&periph->display[(CHIP8_DISPLAY_WIDTH-shift)*CHIP8_DISPLAY_HEIGHT/8], 0, shift*CHIP8_DISPLAY_HEIGHT/8);
+					}
+					break;
+					case 0x00FD: // 00FD Superchip
+						periph->requests |= CHIP8_REQUEST_EXIT_EMULATOR;
+					break;
+					case 0x00FE: // 00FE Superchip
+						periph->high_res = 0;
+						if(machine->quirks & CHIP8_QUIRK_RESIZE_CLEAR_SCREEN) {
+							memset(periph->display, 0, sizeof(periph->display));
+						}
+					break;
+					case 0x00FF: // 00FF Superchip
+						periph->high_res = 1;
+						if(machine->quirks & CHIP8_QUIRK_RESIZE_CLEAR_SCREEN) {
+							memset(periph->display, 0, sizeof(periph->display));
+						}
+					break;
+					default:
+						assert(0); // Machine code execution: Unsupported!
+					break;
+				}
 			}
 		break;
 		case 0x2000:
@@ -160,7 +210,7 @@ void chip8_step(struct chip8_machine *machine) {
 				}
 				break;
 				default:
-					assert(false); // Invalid instruction!
+					assert(0); // Invalid instruction!
 				break;
 			}
 		break;
@@ -187,28 +237,142 @@ void chip8_step(struct chip8_machine *machine) {
 		break;
 		case 0xD000:
 		{
-			uint16_t x = *vx % CHIP8_DISPLAY_WIDTH;
-			uint16_t y = *vy % CHIP8_DISPLAY_HEIGHT;
-			uint16_t row = y*CHIP8_DISPLAY_WIDTH/8;
+			// Pass 1: Determine x, y, w, h position of the drawing operation
+			uint16_t x = (periph->high_res ? (*vx) : (*vx*2)) % CHIP8_DISPLAY_WIDTH;
+			uint16_t y = (periph->high_res ? (*vy) : (*vy*2)) % CHIP8_DISPLAY_HEIGHT;
 			*vf = 0x00;
-			for(size_t n=0; n<(instruction&0x000F); n++) {
-				if(row >= sizeof(periph->display)) {
+
+			uint8_t sprite_width = 8;
+			uint8_t sprite_height = (instruction&0x000F);
+			uint8_t draw_hires = periph->high_res;
+			if(!sprite_height) {
+				// DXY0 draws 8x16 or 16x16 sprite. The latter one is far more common
+				if(machine->quirks & CHIP8_QUIRK_LORES_TALL_SPRITE) {
+					sprite_width = 8;
+					sprite_height = 16;
+				} else if(periph->high_res) {
+					sprite_width = 16;
+					sprite_height = 16;
+				} else if(machine->quirks & CHIP8_QUIRK_LORES_WIDE_SPRITE) {
+					sprite_width = 16;
+					sprite_height = 16;
+				}
+			}
+
+			// Pass 2: Prepare sprite content in column-major format, leftmost is first column. For each column, topmost is LSB, bottommost is MSB
+			static uint32_t sprite_content[32]; // static for conserving stack storage space
+			memset(sprite_content, 0, sizeof(sprite_content));
+			if(draw_hires) {
+				switch(sprite_width) {
+					case 8:
+						for(size_t sx=0; sx<sprite_width; sx++) {
+							for(size_t sy=0; sy<sprite_height; sy++) {
+								if(mem[*i+(sprite_height-sy-1)] & (1U<<(sprite_width-sx-1))) {
+									sprite_content[sx] |= 1U << (sprite_height-sy-1);
+								}
+							}
+						}
+					break;
+					case 16:
+						for(size_t sx=0; sx<sprite_width; sx++) {
+							for(size_t sy=0; sy<sprite_height; sy++) {
+								if(sx < 8) {
+									if(mem[*i+(sprite_height-sy-1)*2] & (1U<<(8-sx-1))) {
+										sprite_content[sx] |= 1U << (sprite_height-sy-1);
+									}
+								} else {
+									if(mem[*i+(sprite_height-sy-1)*2+1] & (1U<<(8-(sx-8)-1))) {
+										sprite_content[sx] |= 1U << (sprite_height-sy-1);
+									}
+								}
+							}
+						}
+					break;
+					default:
+						assert(0); // Unimplemented. Should never reach here.
+					break;
+				}
+			} else {
+				switch(sprite_width) {
+					case 8:
+						for(size_t sx=0; sx<sprite_width; sx++) {
+							for(size_t sy=0; sy<sprite_height; sy++) {
+								if(mem[*i+(sprite_height-sy-1)] & (1U<<(sprite_width-sx-1))) {
+									// Draw two pixels veritcally
+									sprite_content[sx*2] |= 3U << ((sprite_height-sy-1)*2);
+								}
+							}
+							// Draw the second pixel horizontally
+							sprite_content[sx*2+1] = sprite_content[sx*2];
+						}
+					break;
+					case 16:
+						for(size_t sx=0; sx<sprite_width; sx++) {
+							for(size_t sy=0; sy<sprite_height; sy++) {
+								if(sx < 8) {
+									if(mem[*i+(sprite_height-sy-1)*2] & (1U<<(8-sx-1))) {
+										// Draw two pixels veritcally
+										sprite_content[sx*2] |= 3U << ((sprite_height-sy-1)*2);
+									}
+								} else {
+									if(mem[*i+(sprite_height-sy-1)*2+1] & (1U<<(8-(sx-8)-1))) {
+										// Draw two pixels veritcally
+										sprite_content[sx*2] |= 3U << ((sprite_height-sy-1)*2);
+									}
+								}
+							}
+							// Draw the second pixel horizontally
+							sprite_content[sx*2+1] = sprite_content[sx*2];
+						}
+					break;
+					default:
+						assert(0); // Unimplemented. Should never reach here.
+					break;
+				}
+				sprite_width *= 2;
+				sprite_height *= 2;
+			}
+
+			// Pass 3: Blit the sprite onto the display
+			uint16_t collision = 0; // The bit is set to 1 if that column has collision, 0 else.
+			for(size_t sx=0; sx<sprite_width; sx++) {
+				uint16_t col = (x+sx)*CHIP8_DISPLAY_HEIGHT/8;
+
+				if(machine->quirks & CHIP8_QUIRK_WRAP) {
+					col %= CHIP8_DISPLAY_HEIGHT*CHIP8_DISPLAY_WIDTH/8;
+				} else if(x+sx >= CHIP8_DISPLAY_WIDTH) {
+					// No need to draw further. Everything's gonna be clipped.
 					break;
 				}
 
-				uint8_t display_old = periph->display[row + x/8];
-				periph->display[row + x/8] ^= mem[*i+n] >> (x%8);
-				if(chip8_check_collision(display_old, periph->display[row + x/8])) {
-					*vf = 0x01;
+				for(size_t sy=0; sy<sprite_height+(y%8); sy+=8) {
+					uint16_t row = (y+sy)/8;
+					if(machine->quirks & CHIP8_QUIRK_WRAP) {
+						row %= CHIP8_DISPLAY_HEIGHT/8;
+					} else if(row >= CHIP8_DISPLAY_HEIGHT/8) {
+						// No need to draw further. Everything's gonna be clipped.
+						break;
+					}
+					uint8_t display_old = periph->display[col + row];
+					periph->display[col + row] ^= sprite_content[sx] << (y%8) >> sy;
+					collision |= (uint32_t)chip8_check_collision(display_old, periph->display[col + row]) << sy >> (y%8);
 				}
-				if(x + 8 < (int)CHIP8_DISPLAY_WIDTH) {
-					display_old = periph->display[row + x/8 + 1];
-					periph->display[row + x/8 + 1] ^= mem[*i+n] << (8-(x%8));
-					if(chip8_check_collision(display_old, periph->display[row + x/8 + 1])) {
-						*vf = 0x01;
+			}
+
+			// Pass 4: saves collision info vf and requset wait for VBLANK if needed
+			if(periph->high_res && (machine->quirks & CHIP8_QUIRK_HIRES_COLLISION)) {
+				for(size_t i=0; i<sizeof(collision)*8; i++) {
+					if(collision & (1U << i)) {
+						(*vf)++;
 					}
 				}
-				row += CHIP8_DISPLAY_WIDTH/8;
+				// Also need to add the count of the clipped content
+				// This is hires-mode specific so don't add it to the clipping mechanism.
+				if(y+sprite_height >= CHIP8_DISPLAY_HEIGHT) {
+					*vf += (y+sprite_height-CHIP8_DISPLAY_HEIGHT);
+				}
+			} else {
+				*vf = !!collision;
 			}
 			if(machine->quirks & CHIP8_QUIRK_VBLANK) {
 				periph->requests |= CHIP8_REQUEST_WAIT_DISPLAY_REFRESH;
@@ -228,7 +392,7 @@ void chip8_step(struct chip8_machine *machine) {
 					}
 				break;
 				default:
-					assert(false); // Invalid instruction!
+					assert(0); // Invalid instruction!
 				break;
 			}
 		break;
@@ -265,6 +429,13 @@ void chip8_step(struct chip8_machine *machine) {
 						*i = *vx * 5;
 					}
 				break;
+				case 0x0030: // FX30 Superchip
+					if(*vx > 0xF) {
+						*i = (16 * 5) + (16 * 10);
+					} else {
+						*i = (16 * 5) + (*vx * 10);
+					}
+				break;
 				case 0x0033: // FX33
 					assert(*i + 2 < (int)CHIP8_MEMORY_SIZE);
 					mem[*i] = *vx / 100;
@@ -299,13 +470,19 @@ void chip8_step(struct chip8_machine *machine) {
 					}
 				}
 				break;
+				case 0x0075: // FX75 Superchip
+					memcpy(periph->storage_flags, cpu->v, (instruction & 0x0F00)>>8);
+				break;
+				case 0x0085: // FX85 Superchip
+					memcpy(cpu->v, periph->storage_flags, (instruction & 0x0F00)>>8);
+				break;
 				default:
-					assert(false); // Invalid instruction!
+					assert(0); // Invalid instruction!
 				break;
 			}
 		break;
 		default:
-			assert(false); // Invalid instruction!
+			assert(0); // Invalid instruction!
 		break;
 	}
 	if(!prevents_stepping) {
@@ -341,6 +518,22 @@ void chip8_init(struct chip8_machine *machine, uint32_t quirks) {
 		0xE0, 0x90, 0x90, 0x90, 0xE0, // D
 		0xF0, 0x80, 0xF0, 0x80, 0xF0, // E
 		0xF0, 0x80, 0xF0, 0x80, 0x80, // F
+		0xFF, 0xFF, 0xC3, 0xC3, 0xC3, 0xC3, 0xC3, 0xC3, 0xFF, 0xFF, // 0
+		0x18, 0x78, 0x78, 0x18, 0x18, 0x18, 0x18, 0x18, 0xFF, 0xFF, // 1
+		0xFF, 0xFF, 0x03, 0x03, 0xFF, 0xFF, 0xC0, 0xC0, 0xFF, 0xFF, // 2
+		0xFF, 0xFF, 0x03, 0x03, 0xFF, 0xFF, 0x03, 0x03, 0xFF, 0xFF, // 3
+		0xC3, 0xC3, 0xC3, 0xC3, 0xFF, 0xFF, 0x03, 0x03, 0x03, 0x03, // 4
+		0xFF, 0xFF, 0xC0, 0xC0, 0xFF, 0xFF, 0x03, 0x03, 0xFF, 0xFF, // 5
+		0xFF, 0xFF, 0xC0, 0xC0, 0xFF, 0xFF, 0xC3, 0xC3, 0xFF, 0xFF, // 6
+		0xFF, 0xFF, 0x03, 0x03, 0x06, 0x0C, 0x18, 0x18, 0x18, 0x18, // 7
+		0xFF, 0xFF, 0xC3, 0xC3, 0xFF, 0xFF, 0xC3, 0xC3, 0xFF, 0xFF, // 8
+		0xFF, 0xFF, 0xC3, 0xC3, 0xFF, 0xFF, 0x03, 0x03, 0xFF, 0xFF, // 9
+		0x7E, 0xFF, 0xC3, 0xC3, 0xC3, 0xFF, 0xFF, 0xC3, 0xC3, 0xC3, // A
+		0xFC, 0xFC, 0xC3, 0xC3, 0xFC, 0xFC, 0xC3, 0xC3, 0xFC, 0xFC, // B
+		0x3C, 0xFF, 0xC3, 0xC0, 0xC0, 0xC0, 0xC0, 0xC3, 0xFF, 0x3C, // C
+		0xFC, 0xFE, 0xC3, 0xC3, 0xC3, 0xC3, 0xC3, 0xC3, 0xFE, 0xFC, // D
+		0xFF, 0xFF, 0xC0, 0xC0, 0xFF, 0xFF, 0xC0, 0xC0, 0xFF, 0xFF, // E
+		0xFF, 0xFF, 0xC0, 0xC0, 0xFF, 0xFF, 0xC0, 0xC0, 0xC0, 0xC0  // F
 	};
 	memcpy(machine->mem, font_data, sizeof(font_data));
 	memset(&machine->mem[sizeof(font_data)], 0, sizeof(machine->mem));
