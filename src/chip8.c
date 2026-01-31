@@ -58,66 +58,82 @@ void chip8_step(struct chip8_machine *machine) {
 
 	switch(instruction & 0xF000) {
 		case 0x0000:
-			if((instruction & 0x00F0) == 0x00C0) {
-				// 00CN Superchip
-				uint8_t shift = (instruction & 0x000F);
-				if(NEED_DOUBLE_SCROLL()) {
-					shift *= 2;
-				}
-				assert(CHIP8_DISPLAY_HEIGHT == 64);
-				for(size_t x=0; x<CHIP8_DISPLAY_WIDTH; x++) {
-					*((uint64_t*)&periph->display[x*CHIP8_DISPLAY_HEIGHT/8]) = *((uint64_t*)&periph->display[x*CHIP8_DISPLAY_HEIGHT/8]) << shift;
-				}
-			} else {
-				switch(instruction & 0x00FF) {
-					case 0x00E0: // 00E0
-						memset(periph->display, 0, sizeof(periph->display));
-					break;
-					case 0x00EE: // 00EE
-						assert(cpu->pc_index > 0);
-						cpu->pc_index--;
-					break;
-					case 0x00FB: // 00FB Superchip
-					{
-						uint8_t shift = NEED_DOUBLE_SCROLL() ? 8 : 4;
-						for(size_t x=CHIP8_DISPLAY_WIDTH-1; x>=shift; x--) {
-							for(size_t y=0; y<CHIP8_DISPLAY_HEIGHT/8; y++) {
-								periph->display[x*CHIP8_DISPLAY_HEIGHT/8+y] = periph->display[(x-shift)*CHIP8_DISPLAY_HEIGHT/8+y];
-							}
-						}
-						memset(periph->display, 0, shift*CHIP8_DISPLAY_HEIGHT/8);
+			switch(instruction & 0x00F0) {
+				case 0x00C0: // 00CN Superchip
+				{
+					uint8_t shift = (instruction & 0x000F);
+					if(NEED_DOUBLE_SCROLL()) {
+						shift *= 2;
 					}
-					break;
-					case 0x00FC: // 00FC Superchip
-					{
-						uint8_t shift = NEED_DOUBLE_SCROLL() ? 8 : 4;
-						for(size_t x=0; x<CHIP8_DISPLAY_WIDTH-shift; x++) {
-							for(size_t y=0; y<CHIP8_DISPLAY_HEIGHT/8; y++) {
-								periph->display[x*CHIP8_DISPLAY_HEIGHT/8+y] = periph->display[(x+shift)*CHIP8_DISPLAY_HEIGHT/8+y];
-							}
-						}
-						memset(&periph->display[(CHIP8_DISPLAY_WIDTH-shift)*CHIP8_DISPLAY_HEIGHT/8], 0, shift*CHIP8_DISPLAY_HEIGHT/8);
+					assert(CHIP8_DISPLAY_HEIGHT == 64);
+					for(size_t x=0; x<CHIP8_DISPLAY_WIDTH; x++) {
+						*((uint64_t*)&periph->display[x*CHIP8_DISPLAY_HEIGHT/8]) = *((uint64_t*)&periph->display[x*CHIP8_DISPLAY_HEIGHT/8]) << shift;
 					}
-					break;
-					case 0x00FD: // 00FD Superchip
-						periph->requests |= CHIP8_REQUEST_EXIT_EMULATOR;
-					break;
-					case 0x00FE: // 00FE Superchip
-						periph->high_res = 0;
-						if(machine->quirks & CHIP8_QUIRK_RESIZE_CLEAR_SCREEN) {
-							memset(periph->display, 0, sizeof(periph->display));
-						}
-					break;
-					case 0x00FF: // 00FF Superchip
-						periph->high_res = 1;
-						if(machine->quirks & CHIP8_QUIRK_RESIZE_CLEAR_SCREEN) {
-							memset(periph->display, 0, sizeof(periph->display));
-						}
-					break;
-					default:
-						assert(0); // Machine code execution: Unsupported!
-					break;
 				}
+				break;
+				case 0x00D0: // 00DN XO-Chip
+				{
+					uint8_t shift = (instruction & 0x000F);
+					if(NEED_DOUBLE_SCROLL()) {
+						shift *= 2;
+					}
+					assert(CHIP8_DISPLAY_HEIGHT == 64);
+					for(size_t x=0; x<CHIP8_DISPLAY_WIDTH; x++) {
+						*((uint64_t*)&periph->display[x*CHIP8_DISPLAY_HEIGHT/8]) = *((uint64_t*)&periph->display[x*CHIP8_DISPLAY_HEIGHT/8]) >> shift;
+					}
+				}
+				break;
+				default:
+					switch(instruction & 0x00FF) {
+						case 0x00E0: // 00E0
+							memset(periph->display, 0, sizeof(periph->display));
+						break;
+						case 0x00EE: // 00EE
+							assert(cpu->pc_index > 0);
+							cpu->pc_index--;
+						break;
+						case 0x00FB: // 00FB Superchip
+						{
+							uint8_t shift = NEED_DOUBLE_SCROLL() ? 8 : 4;
+							for(size_t x=CHIP8_DISPLAY_WIDTH-1; x>=shift; x--) {
+								for(size_t y=0; y<CHIP8_DISPLAY_HEIGHT/8; y++) {
+									periph->display[x*CHIP8_DISPLAY_HEIGHT/8+y] = periph->display[(x-shift)*CHIP8_DISPLAY_HEIGHT/8+y];
+								}
+							}
+							memset(periph->display, 0, shift*CHIP8_DISPLAY_HEIGHT/8);
+						}
+						break;
+						case 0x00FC: // 00FC Superchip
+						{
+							uint8_t shift = NEED_DOUBLE_SCROLL() ? 8 : 4;
+							for(size_t x=0; x<CHIP8_DISPLAY_WIDTH-shift; x++) {
+								for(size_t y=0; y<CHIP8_DISPLAY_HEIGHT/8; y++) {
+									periph->display[x*CHIP8_DISPLAY_HEIGHT/8+y] = periph->display[(x+shift)*CHIP8_DISPLAY_HEIGHT/8+y];
+								}
+							}
+							memset(&periph->display[(CHIP8_DISPLAY_WIDTH-shift)*CHIP8_DISPLAY_HEIGHT/8], 0, shift*CHIP8_DISPLAY_HEIGHT/8);
+						}
+						break;
+						case 0x00FD: // 00FD Superchip
+							periph->requests |= CHIP8_REQUEST_EXIT_EMULATOR;
+						break;
+						case 0x00FE: // 00FE Superchip
+							periph->high_res = 0;
+							if(machine->quirks & CHIP8_QUIRK_RESIZE_CLEAR_SCREEN) {
+								memset(periph->display, 0, sizeof(periph->display));
+							}
+						break;
+						case 0x00FF: // 00FF Superchip
+							periph->high_res = 1;
+							if(machine->quirks & CHIP8_QUIRK_RESIZE_CLEAR_SCREEN) {
+								memset(periph->display, 0, sizeof(periph->display));
+							}
+						break;
+						default:
+							assert(0); // Machine code execution: Unsupported!
+						break;
+					}
+				break;
 			}
 		break;
 		case 0x2000:
@@ -139,9 +155,46 @@ void chip8_step(struct chip8_machine *machine) {
 			}
 		break;
 		case 0x5000:
-			if(*vx == *vy) {
-				cpu->pc[cpu->pc_index] += 2;
+		{
+			size_t x = (instruction & 0x0F00)>>8;
+			size_t y = (instruction & 0x00F0)>>4;
+			switch(instruction & 0x000F) {
+				case 0x0000: // 5XY0
+					if(*vx == *vy) {
+						cpu->pc[cpu->pc_index] += 2;
+					}
+				break;
+				case 0x0002: // 5XY2 XO-Chip
+				{
+					if(x < y) {
+						for(size_t n=0; n<=y-x; n++) {
+							mem[*i+n] = cpu->v[x+n];
+						}
+					} else {
+						for(size_t n=0; n<=x-y; n++) {
+							mem[*i+n] = cpu->v[y-n];
+						}
+					}
+				}
+				break;
+				case 0x0003: // 5XY3 XO-Chip
+				{
+					if(x < y) {
+						for(size_t n=0; n<=y-x; n++) {
+							cpu->v[x+n] = mem[*i+n];
+						}
+					} else {
+						for(size_t n=0; n<=x-y; n++) {
+							cpu->v[y-n] = mem[*i+n];
+						}
+					}
+				}
+				break;
+				default:
+					assert(0); // Unsupported instruction
+				break;
 			}
+		}
 		break;
 		case 0x6000:
 			*vx = instruction&0x00FF;
@@ -215,8 +268,15 @@ void chip8_step(struct chip8_machine *machine) {
 			}
 		break;
 		case 0x9000:
-			if(*vx != *vy) {
-				cpu->pc[cpu->pc_index] += 2;
+			switch(instruction & 0x000F) {
+				case 0x0000: // 9XY0
+					if(*vx != *vy) {
+						cpu->pc[cpu->pc_index] += 2;
+					}
+				break;
+				default:
+					assert(0); // Unsupported instruction
+				break;
 			}
 		break;
 		case 0xA000:
@@ -381,12 +441,12 @@ void chip8_step(struct chip8_machine *machine) {
 		break;
 		case 0xE000:
 			switch(instruction & 0x00FF) {
-				case 0x009E: // E09E
+				case 0x009E: // EX9E
 					if(periph->key_held & (1U << *vx)) {
 						cpu->pc[cpu->pc_index] += 2;
 					}
 				break;
-				case 0x00A1: // E0A1
+				case 0x00A1: // EXA1
 					if(!(periph->key_held & (1U << *vx))) {
 						cpu->pc[cpu->pc_index] += 2;
 					}
@@ -398,6 +458,15 @@ void chip8_step(struct chip8_machine *machine) {
 		break;
 		case 0xF000:
 			switch(instruction & 0x00FF) {
+				case 0x0002: // F002 XO-Chip
+					// Converts big-endian mem into 32bit little-endian and store it into periph->audio
+					for(size_t n=0; n<CHIP8_AUDIO_BUFFER_SIZE/4; n++) {
+						periph->audio[n] = (mem[(*i) + n*4 + 0] << 24) |
+											(mem[(*i) + n*4 + 1] << 16) |
+											(mem[(*i) + n*4 + 2] << 8) |
+											(mem[(*i) + n*4 + 3] << 0);
+					}
+				break;
 				case 0x0007: // FX07
 					*vx = periph->delay_timer;
 				break;
@@ -441,6 +510,9 @@ void chip8_step(struct chip8_machine *machine) {
 					mem[*i] = *vx / 100;
 					mem[*i+1] = (*vx - mem[*i] * 100) / 10;
 					mem[*i+2] = *vx - mem[*i]*100 - mem[*i+1]*10;
+				break;
+				case 0x003A: // FX3A XO-Chip
+					periph->audio_pitch = *vx;
 				break;
 				case 0x0055: // FX55
 				{
@@ -542,6 +614,10 @@ void chip8_init(struct chip8_machine *machine, uint32_t quirks) {
 	machine->cpu.pc[0] = CHIP8_PROGRAM_START_OFFSET;
 
 	memset(&machine->periph, 0, sizeof(machine->periph));
+
+	// Fill 1000Hz squarewave to audio by default (pulse width: 4 samples 50% duty cycle)
+	memset(&machine->periph.audio, 0xCC, sizeof(machine->periph.audio));
+	machine->periph.audio_pitch = 64; // 4000 Hz sampling rate by default
 
 	machine->quirks = quirks;
 }

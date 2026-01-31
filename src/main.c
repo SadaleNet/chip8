@@ -87,6 +87,16 @@ int main(int argc, char **argv)
 
 	uint32_t cycle_counter = 0;
 
+	SDL_AudioSpec audio_spec;
+    SDL_zero(audio_spec);
+	audio_spec.freq = 4000;
+	audio_spec.format = AUDIO_U8;
+	audio_spec.channels = 1;
+	audio_spec.samples = 128;
+	audio_spec.callback = NULL;
+	SDL_AudioDeviceID audio_device = SDL_OpenAudioDevice(NULL, 0, &audio_spec, NULL, 0);
+    SDL_PauseAudioDevice(audio_device, 0);
+
 	while (1) {
 		current_tick = SDL_GetTicks();
 		SDL_Event event;
@@ -122,6 +132,17 @@ int main(int argc, char **argv)
 			while(SDL_GetTicks() < next_frame_tick) {
 				SDL_Delay(1);
 			}
+		}
+
+		// Audio handling. Pitch: Not implemented.
+		if(chip8.periph.sound_timer > 0 && SDL_GetQueuedAudioSize(audio_device) < 128) {
+			static uint8_t buffer[CHIP8_AUDIO_BUFFER_SIZE*8];
+			for(size_t i=0; i<CHIP8_AUDIO_BUFFER_SIZE/4; i++) {
+				for(size_t j=0; j<32; j++) {
+					buffer[i*32 + j] = (chip8.periph.audio[i] & (1U << (31-j))) ? 255 : 0;
+				}
+			}
+			SDL_QueueAudio(audio_device, buffer, sizeof(buffer));
 		}
 
 		if(SDL_GetTicks() >= next_frame_tick) {
@@ -172,6 +193,7 @@ int main(int argc, char **argv)
 				skip_next_render = 0;
 			} else {
 				// Our emulator is lagging. Skipping the next frame rendering
+				printf("skip! %u\n", SDL_GetTicks());
 				skip_next_render = 1;
 			}
 			cycle_counter = 0;

@@ -34,6 +34,7 @@
 
 #define CHIP8_DISPLAY_WIDTH (128U)
 #define CHIP8_DISPLAY_HEIGHT (64U)
+#define CHIP8_AUDIO_BUFFER_SIZE (16U)
 
 #define CHIP8_QUIRK_SHIFT (1U<<0)
 #define CHIP8_QUIRK_MEMORY_LEAVE_I_UNCHANGED (1U<<1)
@@ -66,9 +67,11 @@ struct chip8_periph {
 	uint16_t key_held;
 	uint16_t key_just_released;
 	uint8_t high_res;
-	uint8_t display[CHIP8_DISPLAY_HEIGHT*CHIP8_DISPLAY_WIDTH/8]; // column-major, first column is leftmost. Each column is 64bit, the top bit is LSB.
 	uint8_t random_num;
 	uint8_t requests;
+	uint8_t audio_pitch; // sample rate: 4000*(2**((audio_pitch-64)/48)) Hz
+	uint32_t audio[CHIP8_AUDIO_BUFFER_SIZE/4]; // 32bit little-endian for better performance of ISR.
+	uint8_t display[CHIP8_DISPLAY_HEIGHT*CHIP8_DISPLAY_WIDTH/8]; // column-major, first column is leftmost. Each column is 64bit, the top bit is LSB.
 	uint8_t storage_flags[16];
 };
 
