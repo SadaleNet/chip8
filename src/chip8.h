@@ -82,6 +82,14 @@ struct chip8_machine {
 	uint32_t quirks;
 };
 
+struct chip8_config {
+	uint8_t font[16*5];
+	uint8_t font_highres[32*5];
+	uint32_t audio[CHIP8_AUDIO_BUFFER_SIZE/4];
+	uint8_t storage_flags[16];
+	uint32_t quirks;
+};
+
 void chip8_step(struct chip8_machine *machine);
 void chip8_timer_step(struct chip8_machine *machine);
-void chip8_init(struct chip8_machine *machine, uint32_t quirks);
+void chip8_init(struct chip8_machine *machine, const struct chip8_config *config);
