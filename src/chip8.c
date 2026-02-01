@@ -54,10 +54,9 @@ void chip8_step(struct chip8_machine *machine) {
 	uint8_t *vf = &cpu->v[15];
 	uint16_t *i = &cpu->i;
 
-	#define NEED_DOUBLE_SCROLL() (!periph->high_res && !(machine->quirks & CHIP8_QUIRK_LORES_SCROLL_DIV2))
-
 	switch(instruction & 0xF000) {
 		case 0x0000:
+			#define NEED_DOUBLE_SCROLL() (!periph->high_res && !(cpu->quirks & CHIP8_QUIRK_LORES_SCROLL_DIV2))
 			switch(instruction & 0x00F0) {
 				case 0x00C0: // 00CN Superchip
 				{
@@ -119,13 +118,13 @@ void chip8_step(struct chip8_machine *machine) {
 						break;
 						case 0x00FE: // 00FE Superchip
 							periph->high_res = 0;
-							if(machine->quirks & CHIP8_QUIRK_RESIZE_CLEAR_SCREEN) {
+							if(cpu->quirks & CHIP8_QUIRK_RESIZE_CLEAR_SCREEN) {
 								memset(periph->display, 0, sizeof(periph->display));
 							}
 						break;
 						case 0x00FF: // 00FF Superchip
 							periph->high_res = 1;
-							if(machine->quirks & CHIP8_QUIRK_RESIZE_CLEAR_SCREEN) {
+							if(cpu->quirks & CHIP8_QUIRK_RESIZE_CLEAR_SCREEN) {
 								memset(periph->display, 0, sizeof(periph->display));
 							}
 						break;
@@ -209,19 +208,19 @@ void chip8_step(struct chip8_machine *machine) {
 				break;
 				case 0x0001: // 8XY1
 					*vx |= *vy;
-					if(machine->quirks & CHIP8_QUIRK_LOGIC) {
+					if(cpu->quirks & CHIP8_QUIRK_LOGIC) {
 						*vf = 0;
 					}
 				break;
 				case 0x0002: // 8XY2
 					*vx &= *vy;
-					if(machine->quirks & CHIP8_QUIRK_LOGIC) {
+					if(cpu->quirks & CHIP8_QUIRK_LOGIC) {
 						*vf = 0;
 					}
 				break;
 				case 0x0003: // 8XY3
 					*vx ^= *vy;
-					if(machine->quirks & CHIP8_QUIRK_LOGIC) {
+					if(cpu->quirks & CHIP8_QUIRK_LOGIC) {
 						*vf = 0;
 					}
 				break;
@@ -241,7 +240,7 @@ void chip8_step(struct chip8_machine *machine) {
 				break;
 				case 0x0006: // 8XY6
 				{
-					uint8_t *source = (machine->quirks & CHIP8_QUIRK_SHIFT) ? vx : vy;
+					uint8_t *source = (cpu->quirks & CHIP8_QUIRK_SHIFT) ? vx : vy;
 					uint8_t shifted_out = (*source & 0x01);
 					*vx = *source >> 1;
 					*vf = shifted_out;
@@ -256,7 +255,7 @@ void chip8_step(struct chip8_machine *machine) {
 				break;
 				case 0x000E: // 8XYE
 				{
-					uint8_t *source = (machine->quirks & CHIP8_QUIRK_SHIFT) ? vx : vy;
+					uint8_t *source = (cpu->quirks & CHIP8_QUIRK_SHIFT) ? vx : vy;
 					uint8_t shifted_out = !!(*source & 0x80);
 					*vx = *source << 1;
 					*vf = shifted_out;
@@ -285,7 +284,7 @@ void chip8_step(struct chip8_machine *machine) {
 		}
 		break;
 		case 0xB000:
-			if(machine->quirks & CHIP8_QUIRK_JUMP) {
+			if(cpu->quirks & CHIP8_QUIRK_JUMP) {
 				cpu->pc[cpu->pc_index] = (instruction & 0x0FFF) + *vx;
 			} else {
 				cpu->pc[cpu->pc_index] = (instruction & 0x0FFF) + cpu->v[0];
@@ -307,13 +306,13 @@ void chip8_step(struct chip8_machine *machine) {
 			uint8_t draw_hires = periph->high_res;
 			if(!sprite_height) {
 				// DXY0 draws 8x16 or 16x16 sprite. The latter one is far more common
-				if(machine->quirks & CHIP8_QUIRK_LORES_TALL_SPRITE) {
+				if(cpu->quirks & CHIP8_QUIRK_LORES_TALL_SPRITE) {
 					sprite_width = 8;
 					sprite_height = 16;
 				} else if(periph->high_res) {
 					sprite_width = 16;
 					sprite_height = 16;
-				} else if(machine->quirks & CHIP8_QUIRK_LORES_WIDE_SPRITE) {
+				} else if(cpu->quirks & CHIP8_QUIRK_LORES_WIDE_SPRITE) {
 					sprite_width = 16;
 					sprite_height = 16;
 				}
@@ -398,7 +397,7 @@ void chip8_step(struct chip8_machine *machine) {
 			for(size_t sx=0; sx<sprite_width; sx++) {
 				uint16_t col = (x+sx)*CHIP8_DISPLAY_HEIGHT/8;
 
-				if(machine->quirks & CHIP8_QUIRK_WRAP) {
+				if(cpu->quirks & CHIP8_QUIRK_WRAP) {
 					col %= CHIP8_DISPLAY_HEIGHT*CHIP8_DISPLAY_WIDTH/8;
 				} else if(x+sx >= CHIP8_DISPLAY_WIDTH) {
 					// No need to draw further. Everything's gonna be clipped.
@@ -407,7 +406,7 @@ void chip8_step(struct chip8_machine *machine) {
 
 				for(size_t sy=0; sy<sprite_height+(y%8); sy+=8) {
 					uint16_t row = (y+sy)/8;
-					if(machine->quirks & CHIP8_QUIRK_WRAP) {
+					if(cpu->quirks & CHIP8_QUIRK_WRAP) {
 						row %= CHIP8_DISPLAY_HEIGHT/8;
 					} else if(row >= CHIP8_DISPLAY_HEIGHT/8) {
 						// No need to draw further. Everything's gonna be clipped.
@@ -420,7 +419,7 @@ void chip8_step(struct chip8_machine *machine) {
 			}
 
 			// Pass 4: saves collision info vf and requset wait for VBLANK if needed
-			if(periph->high_res && (machine->quirks & CHIP8_QUIRK_HIRES_COLLISION)) {
+			if(periph->high_res && (cpu->quirks & CHIP8_QUIRK_HIRES_COLLISION)) {
 				for(size_t i=0; i<sizeof(collision)*8; i++) {
 					if(collision & (1U << i)) {
 						(*vf)++;
@@ -434,7 +433,7 @@ void chip8_step(struct chip8_machine *machine) {
 			} else {
 				*vf = !!collision;
 			}
-			if(machine->quirks & CHIP8_QUIRK_VBLANK) {
+			if(cpu->quirks & CHIP8_QUIRK_VBLANK) {
 				periph->requests |= CHIP8_REQUEST_WAIT_DISPLAY_REFRESH;
 			}
 		}
@@ -521,9 +520,9 @@ void chip8_step(struct chip8_machine *machine) {
 					for(size_t x=0; x<n+1; x++) {
 						mem[(*i)++] = cpu->v[x];
 					}
-					if(machine->quirks & CHIP8_QUIRK_MEMORY_LEAVE_I_UNCHANGED) {
+					if(cpu->quirks & CHIP8_QUIRK_MEMORY_LEAVE_I_UNCHANGED) {
 						*i -= (n+1);
-					} else if (machine->quirks & CHIP8_QUIRK_MEMORY_INCREASE_BY_X) {
+					} else if (cpu->quirks & CHIP8_QUIRK_MEMORY_INCREASE_BY_X) {
 						(*i)--;
 					}
 				}
@@ -535,9 +534,9 @@ void chip8_step(struct chip8_machine *machine) {
 					for(size_t x=0; x<n+1; x++) {
 						cpu->v[x] = mem[(*i)++];
 					}
-					if(machine->quirks & CHIP8_QUIRK_MEMORY_LEAVE_I_UNCHANGED) {
+					if(cpu->quirks & CHIP8_QUIRK_MEMORY_LEAVE_I_UNCHANGED) {
 						*i -= (n+1);
-					} else if (machine->quirks & CHIP8_QUIRK_MEMORY_INCREASE_BY_X) {
+					} else if (cpu->quirks & CHIP8_QUIRK_MEMORY_INCREASE_BY_X) {
 						(*i)--;
 					}
 				}
@@ -580,11 +579,10 @@ void chip8_init(struct chip8_machine *machine, const struct chip8_config *config
 
 	memset(&machine->cpu, 0, sizeof(machine->cpu));
 	machine->cpu.pc[0] = CHIP8_PROGRAM_START_OFFSET;
+	machine->cpu.quirks = config->quirks;
 
 	memset(&machine->periph, 0, sizeof(machine->periph));
 	machine->periph.audio_pitch = 64; // 4000 Hz sampling rate by default as specified in XO-Chip's specs
 	memcpy(machine->periph.audio, config->audio, sizeof(config->audio));
 	memcpy(machine->periph.storage_flags, config->storage_flags, sizeof(config->storage_flags));
-
-	machine->quirks = config->quirks;
 }

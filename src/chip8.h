@@ -56,6 +56,7 @@ struct chip8_cpu {
 	uint16_t i;
 	uint16_t pc[CHIP8_PC_STACK_SIZE];
 	uint8_t pc_index;
+	uint32_t quirks;
 };
 
 #define CHIP8_REQUEST_WAIT_DISPLAY_REFRESH (1U << 0)
@@ -68,18 +69,17 @@ struct chip8_periph {
 	uint16_t key_just_released;
 	uint8_t high_res;
 	uint8_t random_num;
-	uint8_t requests;
 	uint8_t audio_pitch; // sample rate: 4000*(2**((audio_pitch-64)/48)) Hz
+	uint32_t requests;
 	uint32_t audio[CHIP8_AUDIO_BUFFER_SIZE/4]; // 32bit little-endian for better performance of ISR.
 	uint8_t display[CHIP8_DISPLAY_HEIGHT*CHIP8_DISPLAY_WIDTH/8]; // column-major, first column is leftmost. Each column is 64bit, the top bit is LSB.
 	uint8_t storage_flags[16];
 };
 
 struct chip8_machine {
-	struct chip8_cpu cpu;
-	struct chip8_periph periph;
-	uint8_t mem[CHIP8_MEMORY_SIZE];
-	uint32_t quirks;
+	struct chip8_cpu cpu; // contains CPU state that's read-only by the external code (not enforced!)
+	struct chip8_periph periph; // contains variables that can be both read and written by external code
+	uint8_t mem[CHIP8_MEMORY_SIZE]; // Upon run, external code load the program to chip8.mem[CHIP8_PROGRAM_START_OFFSET] with size of CHIP8_MEMORY_SIZE-CHIP8_PROGRAM_START_OFFSET.
 };
 
 struct chip8_config {
