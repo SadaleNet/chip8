@@ -126,7 +126,6 @@ int main(int argc, char **argv)
 	uint32_t current_tick = SDL_GetTicks();
 	uint32_t next_frame_tick = current_tick+FRAME_DURATION_MS;
 	uint16_t key_held_previous = 0;
-	uint8_t sound_indicator_prev = 2;
 
 	uint32_t cycle_counter = 0;
 
@@ -177,7 +176,7 @@ int main(int argc, char **argv)
 			}
 		}
 
-		// Audio handling. Pitch: Not implemented.
+		// Audio handling. Pitch: Not implemented. The timing is also known to be buggy.
 		if(chip8.periph.sound_timer > 0 && SDL_GetQueuedAudioSize(audio_device) < 128) {
 			static uint8_t buffer[CHIP8_AUDIO_BUFFER_SIZE*8];
 			for(size_t i=0; i<CHIP8_AUDIO_BUFFER_SIZE/4; i++) {
@@ -189,10 +188,10 @@ int main(int argc, char **argv)
 		}
 
 		if(SDL_GetTicks() >= next_frame_tick) {
-			// Beep indicator
-			uint8_t sound_indicator = (chip8.periph.sound_timer <= 0x01);
-			if(sound_indicator != sound_indicator_prev) {
-				if(chip8.periph.sound_timer <= 0x01) {
+			// Render display
+			if(!skip_next_render) {
+				// Beep indicator
+				if(chip8.periph.sound_timer == 0) {
 					SDL_SetRenderDrawColor(ren, 22, 22, 22, 255);
 				} else {
 					SDL_SetRenderDrawColor(ren, 222, 222, 222, 255);
@@ -203,12 +202,8 @@ int main(int argc, char **argv)
 				rect.w = CHIP8_DISPLAY_WIDTH*PIXEL_SCALE;
 				rect.h = BORDER_WIDTH;
 				SDL_RenderFillRect(ren, &rect);
-				sound_indicator_prev = sound_indicator;
-				SDL_RenderPresent(ren);
-			}
 
-			// Render display
-			if(!skip_next_render) {
+				// Draw display content
 				for(size_t x=0; x<CHIP8_DISPLAY_WIDTH; x++) {
 					for(size_t y=0; y<CHIP8_DISPLAY_HEIGHT; y++) {
 						if(chip8.periph.display[(x*CHIP8_DISPLAY_HEIGHT+y)/8] & (1<<(y%8))) {
