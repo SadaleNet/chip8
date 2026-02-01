@@ -41,11 +41,27 @@ static uint8_t chip8_check_collision(uint8_t old, uint8_t new) {
 	return (old ^ new) & old;
 }
 
+static void chip8_halt_cpu(struct chip8_machine *machine, uint32_t reasion_flag) {
+	assert(reasion_flag == (reasion_flag & CHIP8_REQUEST_HALT_MASK));
+	machine->cpu.halt = 1;
+	machine->periph.requests |= reasion_flag;
+}
+
 void chip8_step(struct chip8_machine *machine) {
+	#define CHIP8_HALT(condition, flag) \
+		if(condition) { \
+			chip8_halt_cpu(machine, flag); \
+			return; \
+		}
+
 	struct chip8_cpu *cpu = &machine->cpu;
 	struct chip8_periph *periph = &machine->periph;
 	uint8_t *mem = machine->mem;
 	uint8_t prevents_stepping = 0;
+	if(cpu->halt) {
+		// The CPU has stopped. Do not allow it to execute further instructions
+		return;
+	}
 
 	uint16_t instruction = mem[cpu->pc[cpu->pc_index]] << 8;
 	instruction |= mem[cpu->pc[cpu->pc_index]+1];
@@ -88,7 +104,7 @@ void chip8_step(struct chip8_machine *machine) {
 							memset(periph->display, 0, sizeof(periph->display));
 						break;
 						case 0x00EE: // 00EE
-							assert(cpu->pc_index > 0);
+							CHIP8_HALT(cpu->pc_index <= 0, CHIP8_REQUEST_HALT_STACK_ERROR);
 							cpu->pc_index--;
 						break;
 						case 0x00FB: // 00FB Superchip
@@ -114,7 +130,7 @@ void chip8_step(struct chip8_machine *machine) {
 						}
 						break;
 						case 0x00FD: // 00FD Superchip
-							periph->requests |= CHIP8_REQUEST_EXIT_EMULATOR;
+							CHIP8_HALT(1, CHIP8_REQUEST_HALT_EXIT_EMULATOR);
 						break;
 						case 0x00FE: // 00FE Superchip
 							periph->high_res = 0;
@@ -129,26 +145,26 @@ void chip8_step(struct chip8_machine *machine) {
 							}
 						break;
 						default:
-							assert(0); // Machine code execution: Unsupported!
+							CHIP8_HALT(1, CHIP8_REQUEST_HALT_INVALID_INSTRUCTION);
 						break;
 					}
 				break;
 			}
 		break;
-		case 0x2000:
-			assert(cpu->pc_index+1 < (int)CHIP8_PC_STACK_SIZE);
+		case 0x2000: // 2NNN
+			CHIP8_HALT(cpu->pc_index+1 >= CHIP8_PC_STACK_SIZE, CHIP8_REQUEST_HALT_STACK_ERROR);
 			cpu->pc_index++;
 		// Fallthrough
-		case 0x1000:
+		case 0x1000: // 1NNN
 			cpu->pc[cpu->pc_index] = instruction&0x0FFF;
 			prevents_stepping = 1;
 		break;
-		case 0x3000:
+		case 0x3000: // 3XNN
 			if(*vx == (instruction & 0x00FF)) {
 				cpu->pc[cpu->pc_index] += 2;
 			}
 		break;
-		case 0x4000:
+		case 0x4000: // 4XNN
 			if(*vx != (instruction & 0x00FF)) {
 				cpu->pc[cpu->pc_index] += 2;
 			}
@@ -166,10 +182,12 @@ void chip8_step(struct chip8_machine *machine) {
 				case 0x0002: // 5XY2 XO-Chip
 				{
 					if(x < y) {
+						CHIP8_HALT(*i+(y-x) >= CHIP8_MEMORY_SIZE, CHIP8_REQUEST_HALT_I_ERROR);
 						for(size_t n=0; n<=y-x; n++) {
 							mem[*i+n] = cpu->v[x+n];
 						}
 					} else {
+						CHIP8_HALT(*i+(x-y) >= CHIP8_MEMORY_SIZE, CHIP8_REQUEST_HALT_I_ERROR);
 						for(size_t n=0; n<=x-y; n++) {
 							mem[*i+n] = cpu->v[y-n];
 						}
@@ -179,10 +197,12 @@ void chip8_step(struct chip8_machine *machine) {
 				case 0x0003: // 5XY3 XO-Chip
 				{
 					if(x < y) {
+						CHIP8_HALT(*i+(y-x) >= CHIP8_MEMORY_SIZE, CHIP8_REQUEST_HALT_I_ERROR);
 						for(size_t n=0; n<=y-x; n++) {
 							cpu->v[x+n] = mem[*i+n];
 						}
 					} else {
+						CHIP8_HALT(*i+(x-y) >= CHIP8_MEMORY_SIZE, CHIP8_REQUEST_HALT_I_ERROR);
 						for(size_t n=0; n<=x-y; n++) {
 							cpu->v[y-n] = mem[*i+n];
 						}
@@ -190,15 +210,15 @@ void chip8_step(struct chip8_machine *machine) {
 				}
 				break;
 				default:
-					assert(0); // Unsupported instruction
+					CHIP8_HALT(1, CHIP8_REQUEST_HALT_INVALID_INSTRUCTION);
 				break;
 			}
 		}
 		break;
-		case 0x6000:
+		case 0x6000: // 6XNN
 			*vx = instruction&0x00FF;
 		break;
-		case 0x7000:
+		case 0x7000: // 7XNN
 			*vx += instruction&0x00FF;
 		break;
 		case 0x8000:
@@ -262,7 +282,7 @@ void chip8_step(struct chip8_machine *machine) {
 				}
 				break;
 				default:
-					assert(0); // Invalid instruction!
+					CHIP8_HALT(1, CHIP8_REQUEST_HALT_INVALID_INSTRUCTION);
 				break;
 			}
 		break;
@@ -274,16 +294,14 @@ void chip8_step(struct chip8_machine *machine) {
 					}
 				break;
 				default:
-					assert(0); // Unsupported instruction
+					CHIP8_HALT(1, CHIP8_REQUEST_HALT_INVALID_INSTRUCTION);
 				break;
 			}
 		break;
-		case 0xA000:
-		{
+		case 0xA000: // ANNN
 			*i = instruction & 0x0FFF;
-		}
 		break;
-		case 0xB000:
+		case 0xB000: // BXNN / BNNN
 			if(cpu->quirks & CHIP8_QUIRK_JUMP) {
 				cpu->pc[cpu->pc_index] = (instruction & 0x0FFF) + *vx;
 			} else {
@@ -291,10 +309,10 @@ void chip8_step(struct chip8_machine *machine) {
 			}
 			prevents_stepping = 1;
 		break;
-		case 0xC000:
+		case 0xC000: // CXNN
 			*vx = periph->random_num & (instruction & 0x00FF);
 		break;
-		case 0xD000:
+		case 0xD000: // DXYN
 		{
 			// Pass 1: Determine x, y, w, h position of the drawing operation
 			uint16_t x = (periph->high_res ? (*vx) : (*vx*2)) % CHIP8_DISPLAY_WIDTH;
@@ -321,6 +339,11 @@ void chip8_step(struct chip8_machine *machine) {
 			// Pass 2: Prepare sprite content in column-major format, leftmost is first column. For each column, topmost is LSB, bottommost is MSB
 			static uint32_t sprite_content[32]; // static for conserving stack storage space
 			memset(sprite_content, 0, sizeof(sprite_content));
+			switch(sprite_width) {
+				case 8: CHIP8_HALT(*i+(sprite_height-1) >= CHIP8_MEMORY_SIZE, CHIP8_REQUEST_HALT_I_ERROR); break;
+				case 16: CHIP8_HALT(*i+(sprite_height-1)*2+1 >= CHIP8_MEMORY_SIZE, CHIP8_REQUEST_HALT_I_ERROR); break;
+				default: assert(0); break; // Should never reach here
+			}
 			if(draw_hires) {
 				switch(sprite_width) {
 					case 8:
@@ -451,13 +474,14 @@ void chip8_step(struct chip8_machine *machine) {
 					}
 				break;
 				default:
-					assert(0); // Invalid instruction!
+					CHIP8_HALT(1, CHIP8_REQUEST_HALT_INVALID_INSTRUCTION);
 				break;
 			}
 		break;
 		case 0xF000:
 			switch(instruction & 0x00FF) {
 				case 0x0002: // F002 XO-Chip
+					CHIP8_HALT(*i+CHIP8_AUDIO_BUFFER_SIZE-1 >= CHIP8_MEMORY_SIZE, CHIP8_REQUEST_HALT_I_ERROR);
 					// Converts big-endian mem into 32bit little-endian and store it into periph->audio
 					for(size_t n=0; n<CHIP8_AUDIO_BUFFER_SIZE/4; n++) {
 						periph->audio[n] = (mem[(*i) + n*4 + 0] << 24) |
@@ -505,7 +529,7 @@ void chip8_step(struct chip8_machine *machine) {
 					}
 				break;
 				case 0x0033: // FX33
-					assert(*i + 2 < (int)CHIP8_MEMORY_SIZE);
+					CHIP8_HALT(*i+2 >= CHIP8_MEMORY_SIZE, CHIP8_REQUEST_HALT_I_ERROR);
 					mem[*i] = *vx / 100;
 					mem[*i+1] = (*vx - mem[*i] * 100) / 10;
 					mem[*i+2] = *vx - mem[*i]*100 - mem[*i+1]*10;
@@ -516,28 +540,36 @@ void chip8_step(struct chip8_machine *machine) {
 				case 0x0055: // FX55
 				{
 					uint8_t n = (instruction & 0x0F00)>>8;
-					assert(*i >= CHIP8_PROGRAM_START_OFFSET && *i + n < CHIP8_MEMORY_SIZE);
-					for(size_t x=0; x<n+1; x++) {
-						mem[(*i)++] = cpu->v[x];
+					CHIP8_HALT(*i+n >= CHIP8_MEMORY_SIZE, CHIP8_REQUEST_HALT_I_ERROR);
+					for(size_t x=0; x<=n; x++) {
+						mem[*i+x] = cpu->v[x];
 					}
 					if(cpu->quirks & CHIP8_QUIRK_MEMORY_LEAVE_I_UNCHANGED) {
-						*i -= (n+1);
+						// Do not increase I here: a.k.a. do nothing!
 					} else if (cpu->quirks & CHIP8_QUIRK_MEMORY_INCREASE_BY_X) {
-						(*i)--;
+						*i += n;
+					} else {
+						// With this instruction, it's possible to for i to reach 0x1000 without halting the machine
+						// However, as soon as anything got accessed via the i, the machine would halt.
+						*i += n+1;
 					}
 				}
 				break;
 				case 0x0065: // FX65
 				{
 					uint8_t n = (instruction & 0x0F00)>>8;
-					assert(*i + n < CHIP8_MEMORY_SIZE);
-					for(size_t x=0; x<n+1; x++) {
-						cpu->v[x] = mem[(*i)++];
+					CHIP8_HALT(*i+n >= CHIP8_MEMORY_SIZE, CHIP8_REQUEST_HALT_I_ERROR);
+					for(size_t x=0; x<=n; x++) {
+						cpu->v[x] = mem[(*i)+x];
 					}
 					if(cpu->quirks & CHIP8_QUIRK_MEMORY_LEAVE_I_UNCHANGED) {
-						*i -= (n+1);
+						// Do not increase I here: a.k.a. do nothing!
 					} else if (cpu->quirks & CHIP8_QUIRK_MEMORY_INCREASE_BY_X) {
-						(*i)--;
+						*i += n;
+					} else {
+						// With this instruction, it's possible to for i to reach 0x1000 without halting the machine
+						// However, as soon as anything got accessed via the i, the machine would halt.
+						*i += n+1;
 					}
 				}
 				break;
@@ -548,18 +580,22 @@ void chip8_step(struct chip8_machine *machine) {
 					memcpy(cpu->v, periph->storage_flags, (instruction & 0x0F00)>>8);
 				break;
 				default:
-					assert(0); // Invalid instruction!
+					CHIP8_HALT(1, CHIP8_REQUEST_HALT_INVALID_INSTRUCTION);
 				break;
 			}
 		break;
 		default:
-			assert(0); // Invalid instruction!
+			CHIP8_HALT(1, CHIP8_REQUEST_HALT_INVALID_INSTRUCTION);
 		break;
 	}
 	if(!prevents_stepping) {
 		cpu->pc[cpu->pc_index] += 2;
 	}
-	periph->key_just_released = 0;
+
+	// The +1 here is required because 2 bytes got read for each instruction.
+	// For example, if CHIP8_MEMORY_SIZE is 0x1000, PC is 0xFFF, the machine would read 0xFFF and 0x1000, which means that overflow would occur.
+	// PC can only point to 0xFFE at largest, which the machine would read 0xFFE and 0xFFF, which's within CHIP8_MEMORY_SIZE
+	CHIP8_HALT(cpu->pc[cpu->pc_index]+1 >= CHIP8_MEMORY_SIZE, CHIP8_REQUEST_HALT_PC_ERROR);
 }
 
 void chip8_timer_step(struct chip8_machine *machine) {

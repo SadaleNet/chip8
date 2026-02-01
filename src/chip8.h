@@ -52,15 +52,21 @@
 #define CHIP8_QUIRK_VF_ORDER (1U<<12) // No clue on what it does. Unimplemented.
 
 struct chip8_cpu {
-	uint8_t v[16];
+	uint8_t pc_index:4;
+	uint8_t halt:1;
 	uint16_t i;
-	uint16_t pc[CHIP8_PC_STACK_SIZE];
-	uint8_t pc_index;
 	uint32_t quirks;
+	uint8_t v[16];
+	uint16_t pc[CHIP8_PC_STACK_SIZE];
 };
 
 #define CHIP8_REQUEST_WAIT_DISPLAY_REFRESH (1U << 0)
-#define CHIP8_REQUEST_EXIT_EMULATOR (1U << 1)
+#define CHIP8_REQUEST_HALT_EXIT_EMULATOR (1U << 24) // Received instruction to exit the emulator
+#define CHIP8_REQUEST_HALT_I_ERROR (1U << 25) // I overread/overflow
+#define CHIP8_REQUEST_HALT_STACK_ERROR (1U << 26) // stack overflow/underflow
+#define CHIP8_REQUEST_HALT_PC_ERROR (1U << 27) // PC overflow
+#define CHIP8_REQUEST_HALT_INVALID_INSTRUCTION (1U << 28) //Invalid instruction
+#define CHIP8_REQUEST_HALT_MASK (0xFF000000)
 
 struct chip8_periph {
 	uint8_t delay_timer;

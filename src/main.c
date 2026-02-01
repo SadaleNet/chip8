@@ -70,7 +70,7 @@ const struct chip8_config chip8_cfg = {
 	// 1000Hz squarewave, pulse width: 4 samples, 50% duty cycle
 	.audio = {0xCCCCCCCC, 0xCCCCCCCC, 0xCCCCCCCC, 0xCCCCCCCC},
 	.storage_flags = {0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00},
-	.quirks = CHIP8_QUIRK_PLATFORM_SCHIP
+	.quirks = CHIP8_QUIRK_PLATFORM_VIP
 };
 
 int main(int argc, char **argv)
@@ -164,8 +164,35 @@ int main(int argc, char **argv)
 		chip8.periph.random_num = rand();
 		if(!(chip8.periph.requests & CHIP8_REQUEST_WAIT_DISPLAY_REFRESH)) {
 			chip8_step(&chip8);
-			if(chip8.periph.requests & CHIP8_REQUEST_EXIT_EMULATOR) {
-				printf("Exit request received. Emulation completed!\n");
+			chip8.periph.key_just_released = 0;
+			if(chip8.periph.requests & CHIP8_REQUEST_HALT_MASK) {
+				printf("Machine halted! Reason(s):\n");
+				if(chip8.periph.requests & CHIP8_REQUEST_HALT_EXIT_EMULATOR) {
+					printf("CHIP8_REQUEST_HALT_EXIT_EMULATOR ");
+				}
+				if(chip8.periph.requests & CHIP8_REQUEST_HALT_I_ERROR) {
+					printf("CHIP8_REQUEST_HALT_I_ERROR ");
+				}
+				if(chip8.periph.requests & CHIP8_REQUEST_HALT_STACK_ERROR) {
+					printf("CHIP8_REQUEST_HALT_STACK_ERROR ");
+				}
+				if(chip8.periph.requests & CHIP8_REQUEST_HALT_PC_ERROR) {
+					printf("CHIP8_REQUEST_HALT_PC_ERROR ");
+				}
+				if(chip8.periph.requests & CHIP8_REQUEST_HALT_INVALID_INSTRUCTION) {
+					printf("CHIP8_REQUEST_HALT_INVALID_INSTRUCTION ");
+				}
+				printf("\n");
+				printf("PC0..4:\t%04x %04x %04x %04x\n", chip8.cpu.pc[0], chip8.cpu.pc[1], chip8.cpu.pc[2], chip8.cpu.pc[3]);
+				printf("PC5..8:\t%04x %04x %04x %04x\n", chip8.cpu.pc[4], chip8.cpu.pc[5], chip8.cpu.pc[6], chip8.cpu.pc[7]);
+				printf("PC9..12:\t%04x %04x %04x %04x\n", chip8.cpu.pc[8], chip8.cpu.pc[9], chip8.cpu.pc[10], chip8.cpu.pc[11]);
+				printf("PC13..16:\t%04x %04x %04x %04x\n", chip8.cpu.pc[12], chip8.cpu.pc[13], chip8.cpu.pc[14], chip8.cpu.pc[15]);
+				printf("pc_index:\t%u\n", chip8.cpu.pc_index);
+				printf("v0..7:\t%02x %02x %02x %02x %02x %02x %02x %02x\n",
+					chip8.cpu.v[0], chip8.cpu.v[1], chip8.cpu.v[2], chip8.cpu.v[3], chip8.cpu.v[4], chip8.cpu.v[5], chip8.cpu.v[6], chip8.cpu.v[7]);
+				printf("v8..15:\t%02x %02x %02x %02x %02x %02x %02x %02x\n",
+					chip8.cpu.v[8], chip8.cpu.v[9], chip8.cpu.v[10], chip8.cpu.v[11], chip8.cpu.v[12], chip8.cpu.v[13], chip8.cpu.v[14], chip8.cpu.v[15]);
+				printf("i:\t%04x\n", chip8.cpu.i);
 				break;
 			}
 		}
