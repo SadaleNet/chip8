@@ -436,7 +436,11 @@ void chip8_step(struct chip8_machine *machine) {
 						break;
 					}
 					uint8_t display_old = periph->display[col + row];
-					periph->display[col + row] ^= sprite_content[sx] << (y%8) >> sy;
+					if(sy >= y%8) {
+						periph->display[col + row] ^= sprite_content[sx] >> (sy-(y%8));
+					} else {
+						periph->display[col + row] ^= sprite_content[sx] << ((y%8)-sy);
+					}
 					collision |= (uint32_t)chip8_check_collision(display_old, periph->display[col + row]) << sy >> (y%8);
 				}
 			}
